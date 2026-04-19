@@ -8,6 +8,18 @@ export interface PluginOptions {
   stylesId?: string;
 }
 
+const CONTRAST_PREFS_KEY = `${config.prefsPrefix}.contrast`;
+const CONTRAST_MIN = 80;
+const CONTRAST_MAX = 200;
+const CONTRAST_STEP = 20;
+const CONTRAST_TICKS = Array.from(
+  { length: (CONTRAST_MAX - CONTRAST_MIN) / CONTRAST_STEP + 1 },
+  (_, i) => {
+    const pct = (i / ((CONTRAST_MAX - CONTRAST_MIN) / CONTRAST_STEP)) * 100;
+    return `${pct.toFixed(2)}%`;
+  },
+);
+
 export class Plugin {
   readonly id: string;
   readonly stylesId: string;
@@ -18,6 +30,10 @@ export class Plugin {
   get isActive(): boolean {
     return this.#isActive;
   }
+
+  #contrastValues = new Map<string, number>();
+  #appearanceObservers = new Map<string, MutationObserver>();
+  #defaultContrast: number = 100;
 
   constructor({
     id = config.addonID,
@@ -31,15 +47,52 @@ export class Plugin {
     this.rootURI = rootURI;
   }
 
+  #toolbarEventHandler?: _ZoteroTypes.Reader.EventHandler<'renderToolbar'>;
+
   async startup(): Promise<void> {
+    const stored = Zotero.Prefs.get(CONTRAST_PREFS_KEY);
+    if (typeof stored === 'number') {
+      this.#defaultContrast = stored;
+    }
     this.addToAllWindows();
     this.registerObserver();
+    this.#registerToolbarListener();
     await this.styleExistingTabs();
   }
 
   shutdown(): void {
     this.removeFromAllWindows();
     this.unregisterObserver();
+    this.#unregisterToolbarListener();
+    for (const observer of this.#appearanceObservers.values()) {
+      observer.disconnect();
+    }
+    this.#appearanceObservers.clear();
+  }
+
+  #registerToolbarListener() {
+    this.#toolbarEventHandler = ({ reader, doc }) => {
+      this.log(
+        `renderToolbar fired: tabID=${reader.tabID} doc.URL=${doc.URL} body=${!!doc.body}`,
+      );
+      if (!reader._iframeWindow) return;
+      this.#observeAppearancePanel(reader, doc, reader._iframeWindow);
+    };
+    Zotero.Reader.registerEventListener(
+      'renderToolbar',
+      this.#toolbarEventHandler,
+      this.id,
+    );
+  }
+
+  #unregisterToolbarListener() {
+    if (this.#toolbarEventHandler) {
+      Zotero.Reader.unregisterEventListener(
+        'renderToolbar',
+        this.#toolbarEventHandler,
+      );
+      this.#toolbarEventHandler = undefined;
+    }
   }
 
   addToWindow(window: _ZoteroTypes.MainWindow): void {
@@ -67,23 +120,164 @@ export class Plugin {
   async attachStylesToReader(reader: _ZoteroTypes.ReaderInstance) {
     await reader._waitForReader();
     await reader._initPromise;
-    // const doc = reader?._iframeWindow?.document;
-    const doc: Document | undefined =
+    const pdfDoc: Document | undefined =
       // @ts-expect-error no types for _internalReader._primaryView
       reader?._internalReader?._primaryView?._iframeWindow?.document;
-    if (!doc || !doc.documentElement) {
+    if (!pdfDoc || !pdfDoc.documentElement) {
       this.log(`couldn't attach styles; tab ${reader.tabID} not ready`);
       return;
     }
-    if (doc.getElementById(this.stylesId)) {
-      this.log(`skipping ${reader.tabID}: styles already attached`);
-      return;
+    if (pdfDoc.getElementById(this.stylesId)) {
+      pdfDoc.getElementById(this.stylesId)?.remove();
     }
-    const styles = doc.createElement('style');
+    const styles = pdfDoc.createElement('style');
     styles.id = this.stylesId;
     styles.innerText = pluginCss;
-    doc.documentElement.appendChild(styles);
+    pdfDoc.documentElement.appendChild(styles);
     this.log('appended styles to tab: ' + reader.tabID);
+
+    const contrast =
+      this.#contrastValues.get(reader.tabID) ?? this.#defaultContrast;
+    this.#setReaderContrast(pdfDoc, contrast);
+
+    // Fallback for tabs already open when the plugin loads — renderToolbar won't
+    // fire for them, so set up the appearance panel observer directly.
+    const outerDoc = reader?._iframeWindow?.document;
+    this.log(
+      `attachStylesToReader fallback: tabID=${reader.tabID} outerDoc=${!!outerDoc} outerDoc.URL=${outerDoc?.URL}`,
+    );
+    if (outerDoc && reader._iframeWindow) {
+      this.#observeAppearancePanel(reader, outerDoc, reader._iframeWindow);
+    }
+  }
+
+  #setReaderContrast(doc: Document, contrast: number) {
+    const documentElement = doc.documentElement as HTMLElement | null;
+    documentElement?.style.setProperty('--pdf-contrast', `${contrast}%`);
+  }
+
+  #observeAppearancePanel(
+    reader: _ZoteroTypes.ReaderInstance,
+    doc: Document,
+    win: Window,
+  ) {
+    const tabID = reader.tabID;
+    this.#appearanceObservers.get(tabID)?.disconnect();
+
+    const iframeWindow = doc.defaultView;
+    if (!iframeWindow) {
+      this.log(`observeAppearancePanel: no defaultView for tabID=${tabID}`);
+      return;
+    }
+
+    const observeRoot = doc.body ?? doc.documentElement;
+    if (!observeRoot) {
+      this.log(
+        `observeAppearancePanel: no body or documentElement for tabID=${tabID}, URL=${doc.URL}`,
+      );
+      return;
+    }
+
+    this.log(
+      `observeAppearancePanel: setting up observer on tabID=${tabID} root=${observeRoot.tagName} URL=${doc.URL}`,
+    );
+
+    const observer = new win.MutationObserver((mutations: MutationRecord[]) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (!(node instanceof iframeWindow.Element)) continue;
+          const elem = node as Element;
+          this.log(
+            `MutationObserver node added: tag=${elem.tagName} classes="${elem.className}"`,
+          );
+          // React may add a wrapper (e.g. .toolbar-popup-overlay) containing
+          // the popup rather than the popup itself, so check descendants too.
+          const popup = elem.classList.contains('appearance-popup')
+            ? elem
+            : elem.querySelector('.appearance-popup');
+          this.log(`  → popup found: ${!!popup}`);
+          if (popup && !popup.querySelector('[data-contrast-slider]')) {
+            const pdfDoc: Document | undefined =
+              // @ts-expect-error no types for _internalReader._primaryView
+              reader?._internalReader?._primaryView?._iframeWindow?.document;
+            this.log(`  → pdfDoc found: ${!!pdfDoc}`);
+            if (!pdfDoc) return;
+            const contrast =
+              this.#contrastValues.get(tabID) ?? this.#defaultContrast;
+            this.#injectContrastSlider(tabID, doc, pdfDoc, popup, contrast);
+          }
+        }
+      }
+    });
+
+    observer.observe(observeRoot, { childList: true, subtree: true });
+    this.#appearanceObservers.set(tabID, observer);
+    this.log(`observeAppearancePanel: observer active for tabID=${tabID}`);
+  }
+
+  #injectContrastSlider(
+    tabID: string,
+    doc: Document,
+    pdfDoc: Document,
+    popup: Element,
+    contrast: number,
+  ) {
+    const group = doc.createElement('div');
+    group.className = 'group';
+    group.setAttribute('data-contrast-slider', '');
+
+    const row = doc.createElement('div');
+    row.className = 'row';
+
+    const label = doc.createElement('label');
+    label.setAttribute('for', 'contrast-slider');
+    label.textContent = 'Contrast';
+
+    const tickedRange = doc.createElement('div');
+    tickedRange.className = 'ticked-range-input';
+
+    const tickBar = doc.createElement('div');
+    tickBar.className = 'tick-bar';
+    for (const position of CONTRAST_TICKS) {
+      const tick = doc.createElement('div');
+      tick.className = 'tick';
+      tick.style.setProperty('--position', position);
+      tickBar.appendChild(tick);
+    }
+
+    const input = doc.createElement('input');
+    input.type = 'range';
+    input.id = 'contrast-slider';
+    input.min = String(CONTRAST_MIN);
+    input.max = String(CONTRAST_MAX);
+    input.step = String(CONTRAST_STEP);
+    input.value = String(contrast);
+    input.setAttribute('data-tabstop', '1');
+    input.setAttribute('tabindex', '-1');
+    input.style.cssText = 'position: relative; width: 100%;';
+
+    tickedRange.appendChild(tickBar);
+    tickedRange.appendChild(input);
+
+    const valueSpan = doc.createElement('span');
+    valueSpan.className = 'value';
+    valueSpan.textContent = `${contrast}%`;
+
+    input.addEventListener('input', () => {
+      const value = Number(input.value);
+      valueSpan.textContent = `${value}%`;
+      this.#contrastValues.set(tabID, value);
+      this.#setReaderContrast(pdfDoc, value);
+      this.#defaultContrast = value;
+      Zotero.Prefs.set(CONTRAST_PREFS_KEY, value);
+    });
+
+    row.appendChild(label);
+    row.appendChild(tickedRange);
+    row.appendChild(valueSpan);
+    group.appendChild(row);
+    popup.prepend(group);
+    this.log(`injected contrast slider into appearance popup for tab ${tabID}`);
   }
 
   async styleExistingTabs() {
@@ -178,6 +372,6 @@ export class Plugin {
   }
 
   log(msg: string) {
-    Zotero.debug(`[${config.addonName}] ${msg}`);
+    Zotero.log(`[${config.addonName}] ${msg}`);
   }
 }
