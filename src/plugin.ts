@@ -127,18 +127,9 @@ export class Plugin {
       this.log(`couldn't attach styles; tab ${reader.tabID} not ready`);
       return;
     }
-    if (pdfDoc.getElementById(this.stylesId)) {
-      pdfDoc.getElementById(this.stylesId)?.remove();
-    }
-    const styles = pdfDoc.createElement('style');
-    styles.id = this.stylesId;
-    styles.innerText = pluginCss;
-    pdfDoc.documentElement.appendChild(styles);
-    this.log('appended styles to tab: ' + reader.tabID);
-
     const contrast =
       this.#contrastValues.get(reader.tabID) ?? this.#defaultContrast;
-    this.#setReaderContrast(pdfDoc, contrast);
+    this.#applyContrast(pdfDoc, contrast);
 
     // Fallback for tabs already open when the plugin loads — renderToolbar won't
     // fire for them, so set up the appearance panel observer directly.
@@ -151,9 +142,20 @@ export class Plugin {
     }
   }
 
-  #setReaderContrast(doc: Document, contrast: number) {
-    const documentElement = doc.documentElement as HTMLElement | null;
-    documentElement?.style.setProperty('--pdf-contrast', `${contrast}%`);
+  #applyContrast(pdfDoc: Document, contrast: number) {
+    const root = pdfDoc.documentElement as HTMLElement;
+    if (contrast === 100) {
+      pdfDoc.getElementById(this.stylesId)?.remove();
+      root.style.removeProperty('--pdf-contrast');
+    } else {
+      if (!pdfDoc.getElementById(this.stylesId)) {
+        const styles = pdfDoc.createElement('style');
+        styles.id = this.stylesId;
+        styles.innerText = pluginCss;
+        pdfDoc.documentElement?.appendChild(styles);
+      }
+      root.style.setProperty('--pdf-contrast', `${contrast}%`);
+    }
   }
 
   #observeAppearancePanel(reader: _ZoteroTypes.ReaderInstance) {
@@ -206,7 +208,7 @@ export class Plugin {
 
               const callback = (contrast: number): void => {
                 this.#contrastValues.set(tabID, contrast);
-                this.#setReaderContrast(pdfDoc, contrast);
+                this.#applyContrast(pdfDoc, contrast);
                 this.#defaultContrast = contrast;
                 Zotero.Prefs.set(CONTRAST_PREFS_KEY, contrast);
               };
