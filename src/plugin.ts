@@ -76,7 +76,7 @@ export class Plugin {
         `renderToolbar fired: tabID=${reader.tabID} doc.URL=${doc.URL} body=${!!doc.body}`,
       );
       if (!reader._iframeWindow) return;
-      this.#observeAppearancePanel(reader, doc, reader._iframeWindow);
+      this.#observeAppearancePanel(reader);
     };
     Zotero.Reader.registerEventListener(
       'renderToolbar',
@@ -147,7 +147,7 @@ export class Plugin {
       `attachStylesToReader fallback: tabID=${reader.tabID} outerDoc=${!!outerDoc} outerDoc.URL=${outerDoc?.URL}`,
     );
     if (outerDoc && reader._iframeWindow) {
-      this.#observeAppearancePanel(reader, outerDoc, reader._iframeWindow);
+      this.#observeAppearancePanel(reader);
     }
   }
 
@@ -156,17 +156,14 @@ export class Plugin {
     documentElement?.style.setProperty('--pdf-contrast', `${contrast}%`);
   }
 
-  #observeAppearancePanel(
-    reader: _ZoteroTypes.ReaderInstance,
-    doc: Document,
-    win: Window,
-  ) {
+  #observeAppearancePanel(reader: _ZoteroTypes.ReaderInstance) {
     const tabID = reader.tabID;
     this.#appearanceObservers.get(tabID)?.disconnect();
 
-    const iframeWindow = doc.defaultView;
-    if (!iframeWindow) {
-      this.log(`observeAppearancePanel: no defaultView for tabID=${tabID}`);
+    const doc = reader._iframeWindow?.document;
+    const iframeWindow = doc?.defaultView;
+    if (!doc || !iframeWindow) {
+      this.log(`observeAppearancePanel: no document for tabID=${tabID}`);
       return;
     }
 
@@ -182,46 +179,60 @@ export class Plugin {
       `observeAppearancePanel: setting up observer on tabID=${tabID} root=${observeRoot.tagName} URL=${doc.URL}`,
     );
 
-    const observer = new win.MutationObserver((mutations: MutationRecord[]) => {
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (!(node instanceof iframeWindow.Element)) continue;
-          const elem = node as Element;
-          this.log(
-            `MutationObserver node added: tag=${elem.tagName} classes="${elem.className}"`,
-          );
-          // React may add a wrapper (e.g. .toolbar-popup-overlay) containing
-          // the popup rather than the popup itself, so check descendants too.
-          const popup = elem.classList.contains('appearance-popup')
-            ? elem
-            : elem.querySelector('.appearance-popup');
-          this.log(`  → popup found: ${!!popup}`);
-          if (popup && !popup.querySelector('[data-contrast-slider]')) {
-            const pdfDoc: Document | undefined =
-              // @ts-expect-error no types for _internalReader._primaryView
-              reader?._internalReader?._primaryView?._iframeWindow?.document;
-            this.log(`  → pdfDoc found: ${!!pdfDoc}`);
-            if (!pdfDoc) return;
-            const contrast =
-              this.#contrastValues.get(tabID) ?? this.#defaultContrast;
-            this.#injectContrastSlider(tabID, doc, pdfDoc, popup, contrast);
+    const observer = new iframeWindow.MutationObserver(
+      (mutations: MutationRecord[]) => {
+        for (const mutation of mutations) {
+          for (const node of mutation.addedNodes) {
+            if (!(node instanceof iframeWindow.Element)) continue;
+            const elem = node as Element;
+            this.log(
+              `MutationObserver node added: tag=${elem.tagName} classes="${elem.className}"`,
+            );
+            // React may add a wrapper (e.g. .toolbar-popup-overlay) containing
+            // the popup rather than the popup itself, so check descendants too.
+            const popup = elem.classList.contains('appearance-popup')
+              ? elem
+              : elem.querySelector('.appearance-popup');
+            this.log(`  → popup found: ${!!popup}`);
+            if (popup && !popup.querySelector('[data-contrast-slider]')) {
+              const pdfDoc: Document | undefined =
+                // @ts-expect-error no types for _internalReader._primaryView
+                reader?._internalReader?._primaryView?._iframeWindow?.document;
+              this.log(`  → pdfDoc found: ${!!pdfDoc}`);
+              if (!pdfDoc) return;
+
+              // const contrast =
+              //   this.#contrastValues.get(tabID) ?? this.#defaultContrast;
+
+              const callback = (contrast: number): void => {
+                this.#contrastValues.set(tabID, contrast);
+                this.#setReaderContrast(pdfDoc, contrast);
+                this.#defaultContrast = contrast;
+                Zotero.Prefs.set(CONTRAST_PREFS_KEY, contrast);
+              };
+
+              const slider = this.createContrastSlider(reader, callback);
+              if (slider) {
+                popup.prepend(slider);
+              }
+            }
           }
         }
-      }
-    });
+      },
+    );
 
     observer.observe(observeRoot, { childList: true, subtree: true });
     this.#appearanceObservers.set(tabID, observer);
     this.log(`observeAppearancePanel: observer active for tabID=${tabID}`);
   }
 
-  #injectContrastSlider(
-    tabID: string,
-    doc: Document,
-    pdfDoc: Document,
-    popup: Element,
-    contrast: number,
-  ) {
+  createContrastSlider(
+    reader: _ZoteroTypes.ReaderInstance,
+    callback: (contrast: number) => void,
+  ): HTMLDivElement | null {
+    const doc = reader._iframeWindow?.document;
+    if (!doc) return null;
+
     const group = doc.createElement('div');
     group.className = 'group';
     group.setAttribute('data-contrast-slider', '');
@@ -245,6 +256,9 @@ export class Plugin {
       tickBar.appendChild(tick);
     }
 
+    const contrast =
+      this.#contrastValues.get(reader.tabID) ?? this.#defaultContrast;
+
     const input = doc.createElement('input');
     input.type = 'range';
     input.id = 'contrast-slider';
@@ -266,18 +280,14 @@ export class Plugin {
     input.addEventListener('input', () => {
       const value = Number(input.value);
       valueSpan.textContent = `${value}%`;
-      this.#contrastValues.set(tabID, value);
-      this.#setReaderContrast(pdfDoc, value);
-      this.#defaultContrast = value;
-      Zotero.Prefs.set(CONTRAST_PREFS_KEY, value);
+      callback(value);
     });
 
     row.appendChild(label);
     row.appendChild(tickedRange);
     row.appendChild(valueSpan);
     group.appendChild(row);
-    popup.prepend(group);
-    this.log(`injected contrast slider into appearance popup for tab ${tabID}`);
+    return group;
   }
 
   async styleExistingTabs() {
