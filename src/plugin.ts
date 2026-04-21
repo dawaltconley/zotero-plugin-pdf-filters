@@ -36,6 +36,14 @@ export class Plugin {
   #appearanceObservers = new Map<string, MutationObserver>();
   #defaultContrast: number = 100;
 
+  getContrast(reader: _ZoteroTypes.ReaderInstance): number {
+    return this.#contrastValues.get(reader._item.key) ?? this.#defaultContrast;
+  }
+
+  setContrast(reader: _ZoteroTypes.ReaderInstance, contrast: number): void {
+    this.#contrastValues.set(reader._item.key, contrast);
+  }
+
   constructor({
     id = config.addonID,
     stylesId = `${config.addonRef}__pluginStyles`,
@@ -122,9 +130,7 @@ export class Plugin {
     await waitForInternalReader(reader);
 
     // set current contrast for the tab, or default contrast
-    const contrast =
-      this.#contrastValues.get(reader.tabID) ?? this.#defaultContrast;
-    this.applyContrast(reader, contrast);
+    this.applyContrast(reader);
 
     // observe the toolbar for the appearance panel opening
     this.addSliders(reader);
@@ -134,7 +140,7 @@ export class Plugin {
 
   applyContrast(
     reader: _ZoteroTypes.ReaderInstance<'pdf'>,
-    contrast: number,
+    contrast = this.getContrast(reader),
   ): void {
     const pdfDoc: Document | undefined =
       reader._internalReader._primaryView._iframeWindow?.document;
@@ -183,9 +189,8 @@ export class Plugin {
     }
 
     const slider = this.createContrastSlider(reader, (contrast) => {
-      this.#contrastValues.set(tabID, contrast);
+      this.setContrast(reader, contrast);
       this.applyContrast(reader, contrast);
-      this.#defaultContrast = contrast;
       Zotero.Prefs.set(CONTRAST_PREFS_KEY, contrast);
     });
     if (!slider) {
@@ -257,8 +262,7 @@ export class Plugin {
       tickBar.appendChild(tick);
     }
 
-    const contrast =
-      this.#contrastValues.get(reader.tabID) ?? this.#defaultContrast;
+    const contrast = this.getContrast(reader);
 
     const input = doc.createElement('input');
     input.type = 'range';
