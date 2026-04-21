@@ -56,14 +56,12 @@ export class Plugin {
       this.#defaultContrast = stored;
     }
     this.addToAllWindows();
-    this.registerObserver();
     this.#registerToolbarListener();
     await this.styleExistingTabs();
   }
 
   shutdown(): void {
     this.removeFromAllWindows();
-    this.unregisterObserver();
     this.#unregisterToolbarListener();
     for (const observer of this.#appearanceObservers.values()) {
       observer.disconnect();
@@ -303,42 +301,6 @@ export class Plugin {
       readers.map((r) => isPDFReader(r) && this.attachStylesToReader(r)),
     );
     this.log('done adding styles to existing tabs');
-  }
-
-  #observerID?: string;
-  registerObserver() {
-    this.log('registering tab observer');
-    if (this.#observerID) {
-      throw new Error(`${this.id}: observer is already registered`);
-    }
-    this.#observerID = Zotero.Notifier.registerObserver(
-      {
-        notify: async (event, type, ids, extraData) => {
-          // @ts-expect-error zotero-types doesn't include 'load' in the event definition, but tabs have a load event
-          if ((event === 'add' || event === 'load') && type === 'tab') {
-            const tabIDs = ids.filter((id) => extraData[id].type === 'reader');
-            await Promise.all(
-              tabIDs.map(async (id) => {
-                const reader = Zotero.Reader.getByTabID(id.toString());
-                if (isPDFReader(reader)) {
-                  await this.attachStylesToReader(reader);
-                }
-              }),
-            );
-          }
-        },
-      },
-      ['tab'],
-    );
-    this.log('registered observer: ' + this.#observerID);
-  }
-
-  unregisterObserver() {
-    if (this.#observerID) {
-      this.log('unregistering observer: ' + this.#observerID);
-      Zotero.Notifier.unregisterObserver(this.#observerID);
-      this.#observerID = undefined;
-    }
   }
 
   addMenuItems(window: _ZoteroTypes.MainWindow): void {
