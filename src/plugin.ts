@@ -174,7 +174,7 @@ export class Plugin {
       return;
     }
 
-    const observeRoot = doc.body ?? doc.documentElement;
+    const observeRoot = doc.getElementById('reader-ui');
     if (!observeRoot) {
       this.log(
         `observeAppearancePanel: no body or documentElement for tabID=${tabID}, URL=${doc.URL}`,
@@ -222,7 +222,7 @@ export class Plugin {
       },
     );
 
-    observer.observe(observeRoot, { childList: true, subtree: true });
+    observer.observe(observeRoot, { childList: true, subtree: false });
     this.#appearanceObservers.set(tabID, observer);
     this.log(`observeAppearancePanel: observer active for tabID=${tabID}`);
   }
