@@ -177,6 +177,29 @@ export class Plugin {
       return;
     }
 
+    const pdfDoc: Document | undefined =
+      // @ts-expect-error no types for _internalReader._primaryView
+      reader?._internalReader?._primaryView?._iframeWindow?.document;
+    if (!pdfDoc) {
+      this.log(
+        `observeAppearancePanel: no PDF document for tabID=${tabID}, URL=${doc.URL}`,
+      );
+      return;
+    }
+
+    const slider = this.createContrastSlider(reader, (contrast) => {
+      this.#contrastValues.set(tabID, contrast);
+      this.#applyContrast(pdfDoc, contrast);
+      this.#defaultContrast = contrast;
+      Zotero.Prefs.set(CONTRAST_PREFS_KEY, contrast);
+    });
+    if (!slider) {
+      this.log(
+        `observeAppearancePanel: couldn't create contrast slider; tabID=${tabID}, URL=${doc.URL}`,
+      );
+      return;
+    }
+
     this.log(
       `observeAppearancePanel: setting up observer on tabID=${tabID} root=${observeRoot.tagName} URL=${doc.URL}`,
     );
@@ -197,26 +220,7 @@ export class Plugin {
               : elem.querySelector('.appearance-popup');
             this.log(`  → popup found: ${!!popup}`);
             if (popup && !popup.querySelector('[data-contrast-slider]')) {
-              const pdfDoc: Document | undefined =
-                // @ts-expect-error no types for _internalReader._primaryView
-                reader?._internalReader?._primaryView?._iframeWindow?.document;
-              this.log(`  → pdfDoc found: ${!!pdfDoc}`);
-              if (!pdfDoc) return;
-
-              // const contrast =
-              //   this.#contrastValues.get(tabID) ?? this.#defaultContrast;
-
-              const callback = (contrast: number): void => {
-                this.#contrastValues.set(tabID, contrast);
-                this.#applyContrast(pdfDoc, contrast);
-                this.#defaultContrast = contrast;
-                Zotero.Prefs.set(CONTRAST_PREFS_KEY, contrast);
-              };
-
-              const slider = this.createContrastSlider(reader, callback);
-              if (slider) {
-                popup.prepend(slider);
-              }
+              popup.prepend(slider);
             }
           }
         }
