@@ -1,6 +1,6 @@
 {
   "name": "zotero-plugin-pdf-filters",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Adds sliders to control the brightness and contrast of a PDF.",
   "type": "module",
   "config": {
