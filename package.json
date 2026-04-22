@@ -21,6 +21,7 @@
   "license": "ISC",
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@types/lodash.debounce": "^4.0.9",
     "@types/node": "^22.19.17",
     "esbuild-sass-plugin": "^3.7.0",
     "prettier": "^3.8.3",
@@ -56,5 +57,8 @@
         }
       }
     ]
+  },
+  "dependencies": {
+    "lodash.debounce": "^4.0.8"
   }
 }

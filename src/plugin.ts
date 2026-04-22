@@ -2,6 +2,7 @@ import pluginCss from './styles.scss';
 import { createSlider, createSliderGroup, type SliderConfig } from './slider';
 import { isPDFReader, waitForReader, waitForInternalReader } from './utils';
 import { config, version as packageVersion } from '../package.json';
+import debounce from 'lodash.debounce';
 
 const CONTRAST_CONFIG: SliderConfig = {
   min: 80,
@@ -244,12 +245,23 @@ export class Plugin {
       return;
     }
 
+    const DEBOUNCE_TIMEOUT = 4000;
+    const saveBrightness = debounce(
+      this.setSavedValues.bind(this, PREFS.brightnessValues),
+      DEBOUNCE_TIMEOUT,
+    );
+    const saveContrast = debounce(
+      this.setSavedValues.bind(this, PREFS.contrastValues),
+      DEBOUNCE_TIMEOUT,
+    );
+
     const brightnessSlider = createSlider(
       doc,
       this.getBrightness(reader),
       (brightness) => {
         this.setBrightness(reader, brightness);
         this.applyFilters(reader);
+        saveBrightness(this.#brightnessValues);
       },
       BRIGHTNESS_CONFIG,
     );
@@ -260,6 +272,7 @@ export class Plugin {
       (contrast) => {
         this.setContrast(reader, contrast);
         this.applyFilters(reader);
+        saveContrast(this.#contrastValues);
       },
       CONTRAST_CONFIG,
     );
