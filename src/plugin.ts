@@ -119,6 +119,8 @@ export class Plugin {
     );
   }
 
+  #pendingSaves: (() => void)[] = [];
+
   constructor({
     id = config.addonID,
     stylesId = `${config.addonRef}__pluginStyles`,
@@ -145,8 +147,7 @@ export class Plugin {
   }
 
   shutdown(): void {
-    this.setSavedValues(PREFS.contrastValues, this.#contrastValues);
-    this.setSavedValues(PREFS.brightnessValues, this.#brightnessValues);
+    this.#pendingSaves.forEach((flush) => flush());
     this.#unregisterToolbarListener();
     for (const observer of this.#appearanceObservers.values()) {
       observer.disconnect();
@@ -253,6 +254,10 @@ export class Plugin {
     const saveContrast = debounce(
       this.setSavedValues.bind(this, PREFS.contrastValues),
       DEBOUNCE_TIMEOUT,
+    );
+    this.#pendingSaves.push(
+      () => saveBrightness.flush(),
+      () => saveContrast.flush(),
     );
 
     const brightnessSlider = createSlider(
