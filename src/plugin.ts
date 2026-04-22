@@ -41,11 +41,6 @@ export class Plugin {
   readonly version: string;
   readonly rootURI: string;
 
-  #isActive: boolean = true;
-  get isActive(): boolean {
-    return this.#isActive;
-  }
-
   #contrastValues: Map<string, number> = new Map();
   #brightnessValues: Map<string, number> = new Map();
   #defaultContrast: number = 100;
