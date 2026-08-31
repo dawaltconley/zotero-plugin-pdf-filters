@@ -1,17 +1,25 @@
 # Zotero PDF Filters
 
-A [Zotero](https://www.zotero.org/) plugin that adds **Brightness** and
-**Contrast** sliders to the PDF reader's Appearance panel.
+A [Zotero](https://www.zotero.org/) plugin that adds CSS filter sliders to the
+PDF reader's Appearance panel.
 
 ![Brightness and Contrast sliders in the Zotero PDF reader Appearance 
 panel](example.png)
 
 ## Features
 
-- Brightness slider (50–150%, step 5%)
-- Contrast slider (80–360%, step 10%)
-- Settings are saved per document and restored when you reopen it
-- Default values are configurable in **Tools → Preferences → Plugins**
+- **Brightness** slider (50–150%, step 5%)
+- **Contrast** slider (80–360%, step 10%)
+- **Saturation** slider (0–200%, step 10%)
+- **Grayscale** slider (0–100%, step 5%)
+- **Sepia** slider (0–100%, step 5%)
+- **Hue Rotate** slider (0–360°, step 15°)
+- **Invert** slider (0–100%, step 5%)
+- Each filter can be enabled or disabled independently in **Tools → Preferences → Plugins**
+- Disabled filters apply their global default value silently (no slider shown)
+- Per-document values are saved and restored when you reopen a document
+- Default values for each filter are configurable in **Tools → Preferences → Plugins**
+- Changing a default value in Preferences updates all currently open tabs immediately
 
 ## Installation
 
@@ -32,5 +40,5 @@ npm run build   # production build + type check
 ## Known Limitations
 
 - This plugin only supports Zotero 7 and higher
-- The contrast / brightness filters also affect annotations. Currently I'm
-  unaware of any way to control this.
+- In version before Zotero 10, the contrast / brightness filters also affect
+  annotations.
