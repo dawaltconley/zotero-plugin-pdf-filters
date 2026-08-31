@@ -8,6 +8,11 @@ function log(msg) {
 
 function install() {
   log('Installed plugin');
+  Services.scriptloader.loadSubScript(
+    `${rootURI}/content/scripts/__addonRef__.js`,
+  );
+  log(__addonInstance__);
+  __addonInstance__.migratePrefs();
 }
 
 async function startup({ id, version, rootURI }) {

@@ -100,8 +100,5 @@ export function filterPref(
   id: FilterID,
   type: 'enabled' | 'default' | 'values',
 ): string {
-  const base = config.prefsPrefix;
-  if (type === 'enabled') return `${base}.enabled-${id}`;
-  if (type === 'default') return `${base}.default-${id}`;
-  return `${base}.${id}-values`;
+  return `${config.prefsPrefix}.${id}.${type}`;
 }

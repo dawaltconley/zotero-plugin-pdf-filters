@@ -7,27 +7,27 @@
 declare namespace _ZoteroTypes {
   interface Prefs {
     PluginPrefsMap: {
-      "enabled-brightness": boolean;
-      "enabled-contrast": boolean;
-      "enabled-saturate": boolean;
-      "enabled-grayscale": boolean;
-      "enabled-sepia": boolean;
-      "enabled-hue-rotate": boolean;
-      "enabled-invert": boolean;
-      "default-brightness": number;
-      "default-contrast": number;
-      "default-saturate": number;
-      "default-grayscale": number;
-      "default-sepia": number;
-      "default-hue-rotate": number;
-      "default-invert": number;
-      "brightness-values": string;
-      "contrast-values": string;
-      "saturate-values": string;
-      "grayscale-values": string;
-      "sepia-values": string;
-      "hue-rotate-values": string;
-      "invert-values": string;
+      "brightness.enabled": boolean;
+      "contrast.enabled": boolean;
+      "saturate.enabled": boolean;
+      "grayscale.enabled": boolean;
+      "sepia.enabled": boolean;
+      "hue-rotate.enabled": boolean;
+      "invert.enabled": boolean;
+      "brightness.default": number;
+      "contrast.default": number;
+      "saturate.default": number;
+      "grayscale.default": number;
+      "sepia.default": number;
+      "hue-rotate.default": number;
+      "invert.default": number;
+      "brightness.values": string;
+      "contrast.values": string;
+      "saturate.values": string;
+      "grayscale.values": string;
+      "sepia.values": string;
+      "hue-rotate.values": string;
+      "invert.values": string;
     };
   }
 }
